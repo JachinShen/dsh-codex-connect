@@ -45,11 +45,18 @@ export function apply(ctx: ClientContext): void {
     namespace: OPENAI_CODEX_SETTINGS_NAMESPACE,
     decode: decodeOpenAICodexSettings,
   })
-  ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
-    name: 'settings.plugin.item',
+  // RC6 keys list entries by `id`/`order`; RC7 uses `key`/`priority`.
+  // A named object avoids RC7's excess-property check while retaining the
+  // legacy fields that the RC6 runtime requires.
+  const pluginItemOptions = {
+    name: 'settings.plugin.item' as const,
+    id: 'openai-codex',
     key: OPENAI_CODEX_SETTINGS_NAMESPACE,
+    order: 30,
+    priority: 30,
     inject: (): OpenAICodexPluginCardInjected => ({ t, configScope }),
-  }, OpenAICodexPluginCard))
+  }
+  ctx.slots.inject('settings.plugin.item', () => ctx.slots.register(pluginItemOptions, OpenAICodexPluginCard))
 
   ctx.inject(['slots', 'modelDirectories'], (scope: ClientContext) => {
     scope.slots.inject('conversation.input.right', () => scope.slots.register({

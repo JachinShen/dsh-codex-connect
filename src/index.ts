@@ -15,6 +15,7 @@ import type {} from '@deepseek-ai/dsh-web'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-fs'
+import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { createOpenAICodexAdapter } from './adapter.ts'
 import { registerOpenAICodexAuthRoutes } from './auth-routes.ts'
 import { FastModeRegistry } from './fast-mode.ts'
@@ -194,6 +195,25 @@ export const Config: z<Config> = z.object({
   searchMaxOutputTokens: z.number().step(1).min(1).default(DEFAULT_OPENAI_CODEX_SEARCH_MAX_OUTPUT_TOKENS),
 })
 
+type PreparedCallCompat = {
+  model: LlmResolvedModelInfo
+  stream(options: GenerateOptions): AsyncIterable<StreamChunk>
+}
+
+type AdapterCompat = ReturnType<typeof createOpenAICodexAdapter> & {
+  prepareCall?: (provider: string, model: string, signal?: AbortSignal) => Promise<PreparedCallCompat>
+}
+
+/** Bridge RC7 adapters into the registration-bound call seam introduced later. */
+function ensurePreparedCall(adapter: AdapterCompat): AdapterCompat {
+  if (typeof adapter.prepareCall === 'function') return adapter
+  adapter.prepareCall = async (provider, model, signal) => ({
+    model: await adapter.resolveModel(provider, model, signal),
+    stream: options => adapter.stream(options),
+  })
+  return adapter
+}
+
 /**
  * Register the `openai-codex` LLM route with one provider-native OAuth store.
  * Search and image tooling are added only when their config flags are true.
@@ -207,10 +227,10 @@ export function apply(ctx: Context, config: Config): void {
   const fastMode = new FastModeRegistry()
   assertNoOpenAICodexProviderConflict(ctx.llm.listProviders().map(provider => provider.id))
   new OpenAICodexTransport(ctx, credentials)
-  ctx.llm.registerAdapter(
-    [OPENAI_CODEX_PROVIDER],
+  const adapter = ensurePreparedCall(
     createOpenAICodexAdapter(credentials, () => ctx.get('attachments'), fastMode),
   )
+  ctx.llm.registerAdapter([OPENAI_CODEX_PROVIDER], adapter)
   // Newer DSH releases may declare the built-in Codex settings directory
   // before this compatibility adapter mounts. Reuse that declaration instead
   // of registering the same provider a second time.

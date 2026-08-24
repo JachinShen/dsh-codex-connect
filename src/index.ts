@@ -211,13 +211,18 @@ export function apply(ctx: Context, config: Config): void {
     [OPENAI_CODEX_PROVIDER],
     createOpenAICodexAdapter(credentials, () => ctx.get('attachments'), fastMode),
   )
-  ctx.llm.registerConfigurableProviders([{
-    provider: OPENAI_CODEX_PROVIDER,
-    displayName: 'OpenAI Codex',
-    settingsNs: OPENAI_CODEX_SETTINGS_NS,
-    settingsPath: [],
-    declared: false,
-  }])
+  // Newer DSH releases may declare the built-in Codex settings directory
+  // before this compatibility adapter mounts. Reuse that declaration instead
+  // of registering the same provider a second time.
+  if (!ctx.llm.listConfigurableProviders().some(entry => entry.provider === OPENAI_CODEX_PROVIDER)) {
+    ctx.llm.registerConfigurableProviders([{
+      provider: OPENAI_CODEX_PROVIDER,
+      displayName: 'OpenAI Codex',
+      settingsNs: OPENAI_CODEX_SETTINGS_NS,
+      settingsPath: [],
+      declared: false,
+    }])
+  }
   ctx.inject(['webServer'], webCtx => registerOpenAICodexAuthRoutes(webCtx, credentials, undefined, fastMode))
 
   let stopped = false

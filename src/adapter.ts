@@ -13,6 +13,9 @@ import type { FastModeRegistry } from './fast-mode.ts'
 
 /** Provider idle ceiling used by the composite route. */
 export const OPENAI_CODEX_STREAM_IDLE_TIMEOUT_MS = 300_000
+/** Match the current pi-ai adapter defaults for deterministic request-image preparation. */
+export const OPENAI_CODEX_REQUEST_IMAGE_PIXEL_BUDGET = 2048 * 2048
+export const OPENAI_CODEX_REQUEST_IMAGE_MAX_BYTES = 1024 * 1024
 
 /**
  * Give the generic dsh adapter a request-scoped bearer-token entry without
@@ -85,14 +88,22 @@ export function createOpenAICodexAdapter(
   fastMode?: FastModeRegistry,
 ): PiAiAdapter {
   const provider = openaiCodexProvider()
-  const profiles = new Map<string, ResolvedPiAiProviderProfile>([[OPENAI_CODEX_PROVIDER, {
+  // These image-policy fields became required at runtime after the rc.7 type surface.
+  // Keep the intersection until this plugin updates its DSH development baseline.
+  const profile: ResolvedPiAiProviderProfile & {
+    requestImagePixelBudget: number
+    requestImageMaxBytes: number
+  } = {
     provider: OPENAI_CODEX_PROVIDER,
     displayName: 'OpenAI Codex',
     streamIdleTimeoutMs: OPENAI_CODEX_STREAM_IDLE_TIMEOUT_MS,
+    requestImagePixelBudget: OPENAI_CODEX_REQUEST_IMAGE_PIXEL_BUDGET,
+    requestImageMaxBytes: OPENAI_CODEX_REQUEST_IMAGE_MAX_BYTES,
     retryPolicy: resolveRetryPolicy(undefined, 'dsh-codex-connect retryPolicy'),
     configuredMaxTokens: new Map(),
     piProvider: requestProvider(provider, fastMode),
-  }]])
+  }
+  const profiles = new Map<string, ResolvedPiAiProviderProfile>([[OPENAI_CODEX_PROVIDER, profile]])
   const models: MutableModels = createModels({ credentials })
   models.setProvider(provider)
   return new PiAiAdapter({
